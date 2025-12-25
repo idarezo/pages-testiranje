@@ -1,0 +1,74 @@
+name: Build & Publish Docker image (Dev/Prod)
+
+on:
+  push:
+    branches: ["main", "production"]
+    paths:
+      - "Dockerfile"
+      - "site/**"
+      - ".github/workflows/docker-environments.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      image_name: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute tag
+        id: meta
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "tag=dev" >> $GITHUB_OUTPUT
+          elif [ "${GITHUB_REF_NAME}" = "production" ]; then
+            echo "tag=prod" >> $GITHUB_OUTPUT
+          else
+            echo "Unknown branch"; exit 1
+          fi
+          echo "image=${{ secrets.DOCKERHUB_USERNAME }}/tvojprojekt" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+
+  deploy-development:
+    needs: build-and-push
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    environment:
+      name: Development
+    steps:
+      - name: "Deploy (Development) – demo step"
+        run: |
+          echo "Deploying ${{ needs.build-and-push.outputs.image_name }}:${{ needs.build-and-push.outputs.image_tag }} to Development"
+          echo "Tu bi v realnosti klical server/k8s/compose ipd."
+
+  deploy-production:
+    needs: build-and-push
+    if: github.ref_name == 'production'
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: "Deploy (Production) – demo step"
+        run: |
+          echo "Deploying ${{ needs.build-and-push.outputs.image_name }}:${{ needs.build-and-push.outputs.image_tag }} to Production"
+          echo "Ta job bo čakal na manual approval (Required reviewers v env settings)."
